@@ -36,10 +36,10 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
     const privateCat = guild.channels.cache.find(c => c.name === "Private VC" && c.type === 4);
 
     // --- Temp Public VC ---
-    if (newState.channel?.name === "Join to Make Public") {
+    if (newState.channel?.name === "Make a Public VC") {
         if (!publicCat) return;
         const tempVC = await guild.channels.create({
-            name: `@${newState.member.user.username}’s channel`,
+            name: `${newState.member.user.username}’s channel`,
             type: 2,
             parent: publicCat.id,
             permissionOverwrites: [{ id: guild.id, allow: ["Connect", "ViewChannel"] }]
@@ -48,10 +48,10 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
     }
 
     // --- Temp Private VC ---
-    if (newState.channel?.name === "Join to Make Private") {
+    if (newState.channel?.name === "Make a Private VC") {
         if (!privateCat) return;
         const tempVC = await guild.channels.create({
-            name: `@${newState.member.user.username}’s channel`,
+            name: `${newState.member.user.username}’s channel`,
             type: 2,
             parent: privateCat.id,
             permissionOverwrites: [
@@ -63,17 +63,17 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
     }
 
     // --- Join Random VC ---
-    if (newState.channel?.name === "Join random Vc") {
-        const publicVCs = publicCat?.children.cache.filter(ch => ch.type === 2 && ch.members.size < (ch.userLimit || 99));
-        if (publicVCs?.size) {
-            const randomVC = publicVCs.random();
-            await newState.setChannel(randomVC);
-        }
+    if (newState.channel?.name === "Join a Random VC") {
+        if (!publicCat) return;
+        const publicVCs = publicCat.children.cache.filter(c => c.type === 2 && c.members.size < (c.userLimit || Infinity));
+        if (!publicVCs.size) return;
+        const randomVC = publicVCs.random();
+        await newState.setChannel(randomVC);
     }
 
     // --- Unmute Yourself ---
-    if (newState.channel?.name === "unmute urself") {
-        await newState.member.voice.setMute(false).catch(() => {});
+    if (newState.channel?.name === "Unmute Yourself") {
+        await newState.member.voice.setMute(false);
         if (oldState.channel) await newState.setChannel(oldState.channel).catch(() => {});
     }
 
@@ -81,7 +81,7 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
     [publicCat, privateCat].forEach(cat => {
         if (!cat || !cat.children) return;
         cat.children.cache.forEach(ch => {
-            if (ch.members.size === 0 && ch.name.includes("’s channel")) ch.delete().catch(() => {});
+            if (ch.members.size === 0) ch.delete().catch(() => {});
         });
     });
 });
@@ -189,7 +189,7 @@ client.on("messageCreate", async message => {
             createdCats[key] = cat;
         }
 
-        const masterVCs = ["Join to Make Public", "Join to Make Private", "Join random Vc", "unmute urself"];
+        const masterVCs = ["Make a Public VC", "Make a Private VC", "Join a Random VC", "Unmute Yourself"];
         for (const vcName of masterVCs) {
             if (!message.guild.channels.cache.find(c => c.name === vcName && c.parentId === createdCats.master.id)) {
                 await message.guild.channels.create({ name: vcName, type: 2, parent: createdCats.master.id });
@@ -207,7 +207,9 @@ client.on("messageCreate", async message => {
         for (const catName of categoriesToDelete) {
             const cat = message.guild.channels.cache.find(c => c.name === catName && c.type === 4);
             if (cat) {
-                cat.children.cache.forEach(async ch => { await ch.delete().catch(() => {}); });
+                cat.children.cache.forEach(async ch => {
+                    await ch.delete().catch(() => {});
+                });
                 await cat.delete().catch(() => {});
             }
         }
