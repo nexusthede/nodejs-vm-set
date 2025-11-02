@@ -1,5 +1,6 @@
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 const { emojis, prefix } = require("./config");
+require("./keep_alive"); // Keep-alive server
 
 const client = new Client({
     intents: [
@@ -21,7 +22,7 @@ async function sendEmbed(channel, type, description) {
 }
 
 // --- On Ready ---
-client.once("ready", async () => {
+client.once("ready", () => {
     console.log(`${client.user.tag} is online!`);
 });
 
@@ -43,7 +44,7 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
             parent: publicCat.id,
             permissionOverwrites: [{ id: guild.id, allow: ["Connect", "ViewChannel"] }]
         });
-        newState.setChannel(tempVC);
+        await newState.setChannel(tempVC);
     }
 
     // --- Temp Private VC ---
@@ -58,13 +59,13 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
                 { id: newState.member.id, allow: ["Connect", "ViewChannel", "ManageChannels", "MuteMembers"] }
             ]
         });
-        newState.setChannel(tempVC);
+        await newState.setChannel(tempVC);
     }
 
     // --- Delete empty temp VCs ---
     [publicCat, privateCat].forEach(cat => {
-        if (!cat) return;
-        cat.children.forEach(ch => {
+        if (!cat || !cat.children) return;
+        cat.children.cache.forEach(ch => {
             if (ch.members.size === 0) ch.delete().catch(() => {});
         });
     });
@@ -186,17 +187,14 @@ client.on("messageCreate", async message => {
     // -------------------- VM Reset Command --------------------
     if (cmd === "vmreset") {
         if (!member.permissions.has("ManageChannels")) return await sendEmbed(message.channel, "fail", "You need Manage Channels permission.");
-
         const categoriesToDelete = ["Voice Master", "Public VC", "Private VC"];
 
         for (const catName of categoriesToDelete) {
             const cat = message.guild.channels.cache.find(c => c.name === catName && c.type === 4);
             if (cat) {
-                // Delete all child channels first
-                for (const ch of cat.children.values()) {
+                cat.children.cache.forEach(async ch => {
                     await ch.delete().catch(() => {});
-                }
-                // Delete the category
+                });
                 await cat.delete().catch(() => {});
             }
         }
