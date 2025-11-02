@@ -21,7 +21,7 @@ async function sendEmbed(channel, type, description) {
     await channel.send({ embeds: [embed] });
 }
 
-// --- In-memory storage of master category IDs per guild ---
+// --- In-memory storage for guild VMs ---
 const guildVMs = new Map();
 
 // --- On Ready ---
@@ -37,18 +37,17 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
     const vmData = guildVMs.get(guild.id);
     if (!vmData) return;
 
-    const { masterCatId, publicCatId, privateCatId } = vmData;
+    const { publicCatId, privateCatId } = vmData;
 
-    const masterCat = guild.channels.cache.get(masterCatId);
     const publicCat = guild.channels.cache.get(publicCatId);
     const privateCat = guild.channels.cache.get(privateCatId);
 
     // --- Temp Public VC ---
-    const joinPublicVC = masterCat?.children.find(ch => ch.type === 2 && ch.name.toLowerCase().includes("join") && ch.name.toLowerCase().includes("public"));
+    const joinPublicVC = guild.channels.cache.get(vmData.joinPublicId);
     if (newState.channel?.id === joinPublicVC?.id) {
         if (!publicCat) return;
         const tempVC = await guild.channels.create({
-            name: `${newState.member.user.username}’s Public VC`,
+            name: `${newState.member.user.username}’s channel`,
             type: 2,
             parent: publicCat.id,
             permissionOverwrites: [{ id: guild.id, allow: ["Connect", "ViewChannel"] }]
@@ -57,11 +56,11 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
     }
 
     // --- Temp Private VC ---
-    const joinPrivateVC = masterCat?.children.find(ch => ch.type === 2 && ch.name.toLowerCase().includes("join") && ch.name.toLowerCase().includes("private"));
+    const joinPrivateVC = guild.channels.cache.get(vmData.joinPrivateId);
     if (newState.channel?.id === joinPrivateVC?.id) {
         if (!privateCat) return;
         const tempVC = await guild.channels.create({
-            name: `${newState.member.user.username}’s Private VC`,
+            name: `${newState.member.user.username}’s channel`,
             type: 2,
             parent: privateCat.id,
             permissionOverwrites: [
@@ -178,29 +177,25 @@ client.on("messageCreate", async message => {
     if (cmd === "vmsetup") {
         if (!member.permissions.has("ManageChannels")) return await sendEmbed(message.channel, "fail", "You need Manage Channels permission.");
 
-        const categories = { master: "Voice Master", public: "Public VC", private: "Private VC" };
-        const createdCats = {};
+        // Create categories dynamically
+        const masterCat = await message.guild.channels.create({ name: "Voice Master", type: 4 });
+        const publicCat = await message.guild.channels.create({ name: "Public VC", type: 4 });
+        const privateCat = await message.guild.channels.create({ name: "Private VC", type: 4 });
 
-        for (const [key, name] of Object.entries(categories)) {
-            let cat = message.guild.channels.cache.find(c => c.name === name && c.type === 4);
-            if (!cat) cat = await message.guild.channels.create({ name, type: 4 });
-            createdCats[key] = cat;
-        }
+        // Create join VCs inside master (you can rename these later)
+        const joinPublicVC = await message.guild.channels.create({ name: "Join to Make Public", type: 2, parent: masterCat.id });
+        const joinPrivateVC = await message.guild.channels.create({ name: "Join to Make Private", type: 2, parent: masterCat.id });
 
-        const masterVCs = ["Join to Make Public", "Join to Make Private", "Join random VC", "unmute yourself"];
-        for (const vcName of masterVCs) {
-            if (!createdCats.master.children.cache.find(c => c.name === vcName)) {
-                await message.guild.channels.create({ name: vcName, type: 2, parent: createdCats.master.id });
-            }
-        }
-
+        // Store IDs for dynamic temp VC handling
         guildVMs.set(message.guild.id, {
-            masterCatId: createdCats.master.id,
-            publicCatId: createdCats.public.id,
-            privateCatId: createdCats.private.id
+            masterCatId: masterCat.id,
+            publicCatId: publicCat.id,
+            privateCatId: privateCat.id,
+            joinPublicId: joinPublicVC.id,
+            joinPrivateId: joinPrivateVC.id
         });
 
-        await sendEmbed(message.channel, "success", "Voice Master setup complete!");
+        await sendEmbed(message.channel, "success", "Voice Master setup complete! You can rename categories or channels freely.");
     }
 
     // -------------------- VM Reset Command --------------------
@@ -208,20 +203,15 @@ client.on("messageCreate", async message => {
         if (!member.permissions.has("ManageChannels")) return await sendEmbed(message.channel, "fail", "You need Manage Channels permission.");
 
         const vmData = guildVMs.get(message.guild.id);
-        if (!vmData) return await sendEmbed(message.channel, "fail", "Voice Master is not set up.");
+        if (!vmData) return await sendEmbed(message.channel, "fail", "No Voice Master setup found.");
 
         const { masterCatId, publicCatId, privateCatId } = vmData;
-        const categoriesToDelete = [masterCatId, publicCatId, privateCatId];
-
-        for (const catId of categoriesToDelete) {
+        [masterCatId, publicCatId, privateCatId].forEach(catId => {
             const cat = message.guild.channels.cache.get(catId);
-            if (cat) {
-                cat.children.cache.forEach(async ch => {
-                    await ch.delete().catch(() => {});
-                });
-                await cat.delete().catch(() => {});
-            }
-        }
+            if (!cat) return;
+            if (cat.children) cat.children.cache.forEach(ch => ch.delete().catch(() => {}));
+            cat.delete().catch(() => {});
+        });
 
         guildVMs.delete(message.guild.id);
         await sendEmbed(message.channel, "success", "Voice Master has been reset!");
@@ -233,4 +223,4 @@ process.on("unhandledRejection", console.error);
 process.on("uncaughtException", console.error);
 
 // --- Login ---
-client.login(process.env.TOKEN);
+client.login(process
