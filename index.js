@@ -1,6 +1,6 @@
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 const { emojis, prefix } = require("./config");
-require("./keep_alive"); // Keep-alive server
+require("./keep_alive"); // optional keep-alive server
 
 const client = new Client({
     intents: [
@@ -39,7 +39,7 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
     if (newState.channel?.name === "Join to Make Public") {
         if (!publicCat) return;
         const tempVC = await guild.channels.create({
-            name: `@${newState.member.user.username}’s VC`,
+            name: `@${newState.member.user.username}’s channel`,
             type: 2,
             parent: publicCat.id,
             permissionOverwrites: [{ id: guild.id, allow: ["Connect", "ViewChannel"] }]
@@ -51,7 +51,7 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
     if (newState.channel?.name === "Join to Make Private") {
         if (!privateCat) return;
         const tempVC = await guild.channels.create({
-            name: `@${newState.member.user.username}’s VC`,
+            name: `@${newState.member.user.username}’s channel`,
             type: 2,
             parent: privateCat.id,
             permissionOverwrites: [
@@ -62,26 +62,26 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
         await newState.setChannel(tempVC);
     }
 
-    // --- Join random VC ---
-    if (newState.channel?.name === "Join random VC") {
-        if (!publicCat) return;
-        const publicVCs = publicCat.children.cache.filter(c => c.type === 2 && c.members.size < (c.userLimit || 99));
-        if (publicVCs.size === 0) return;
-        const randomVC = publicVCs.random();
-        await newState.setChannel(randomVC);
+    // --- Join Random VC ---
+    if (newState.channel?.name === "Join random Vc") {
+        const publicVCs = publicCat?.children.cache.filter(ch => ch.type === 2 && ch.members.size < (ch.userLimit || 99));
+        if (publicVCs?.size) {
+            const randomVC = publicVCs.random();
+            await newState.setChannel(randomVC);
+        }
     }
 
-    // --- Unmute yourself VC ---
+    // --- Unmute Yourself ---
     if (newState.channel?.name === "unmute urself") {
-        if (newState.member.voice) await newState.member.voice.setMute(false);
-        if (oldState.channel) await newState.member.voice.setChannel(oldState.channel);
+        await newState.member.voice.setMute(false).catch(() => {});
+        if (oldState.channel) await newState.setChannel(oldState.channel).catch(() => {});
     }
 
     // --- Delete empty temp VCs ---
     [publicCat, privateCat].forEach(cat => {
         if (!cat || !cat.children) return;
         cat.children.cache.forEach(ch => {
-            if (ch.members.size === 0) ch.delete().catch(() => {});
+            if (ch.members.size === 0 && ch.name.includes("’s channel")) ch.delete().catch(() => {});
         });
     });
 });
@@ -189,4 +189,36 @@ client.on("messageCreate", async message => {
             createdCats[key] = cat;
         }
 
-        const masterVCs = ["Join
+        const masterVCs = ["Join to Make Public", "Join to Make Private", "Join random Vc", "unmute urself"];
+        for (const vcName of masterVCs) {
+            if (!message.guild.channels.cache.find(c => c.name === vcName && c.parentId === createdCats.master.id)) {
+                await message.guild.channels.create({ name: vcName, type: 2, parent: createdCats.master.id });
+            }
+        }
+
+        await sendEmbed(message.channel, "success", "Voice Master setup complete!");
+    }
+
+    // -------------------- VM Reset Command --------------------
+    if (cmd === "vmreset") {
+        if (!member.permissions.has("ManageChannels")) return await sendEmbed(message.channel, "fail", "You need Manage Channels permission.");
+        const categoriesToDelete = ["Voice Master", "Public VC", "Private VC"];
+
+        for (const catName of categoriesToDelete) {
+            const cat = message.guild.channels.cache.find(c => c.name === catName && c.type === 4);
+            if (cat) {
+                cat.children.cache.forEach(async ch => { await ch.delete().catch(() => {}); });
+                await cat.delete().catch(() => {});
+            }
+        }
+
+        await sendEmbed(message.channel, "success", "Voice Master has been reset!");
+    }
+});
+
+// --- Error Handling ---
+process.on("unhandledRejection", console.error);
+process.on("uncaughtException", console.error);
+
+// --- Login ---
+client.login(process.env.TOKEN);
