@@ -31,12 +31,15 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
     const guild = newState.guild;
     if (!guild) return;
 
-    const masterCat = guild.channels.cache.find(c => c.name.includes("Voice Master") && c.type === 4);
-    const publicCat = guild.channels.cache.find(c => c.name.includes("Public VC") && c.type === 4);
-    const privateCat = guild.channels.cache.find(c => c.name.includes("Private VC") && c.type === 4);
+    // Fetch categories dynamically by name
+    const masterCat = guild.channels.cache.find(c => c.name.includes("MAKE YOUR VOICE") && c.type === 4);
+    const publicCat = guild.channels.cache.find(c => c.name.includes("public vcs") && c.type === 4);
+    const privateCat = guild.channels.cache.find(c => c.name.includes("private vcs") && c.type === 4);
+
+    const channelName = newState.channel?.name;
 
     // --- Temp Public VC ---
-    if (newState.channel?.name === "Make a Public VC") {
+    if (channelName && channelName.toLowerCase().includes("make a public vc")) {
         if (!publicCat) return;
         const tempVC = await guild.channels.create({
             name: `${newState.member.user.username}’s channel`,
@@ -48,7 +51,7 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
     }
 
     // --- Temp Private VC ---
-    if (newState.channel?.name === "Make a Private VC") {
+    if (channelName && channelName.toLowerCase().includes("make a private vc")) {
         if (!privateCat) return;
         const tempVC = await guild.channels.create({
             name: `${newState.member.user.username}’s channel`,
@@ -63,7 +66,7 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
     }
 
     // --- Join Random VC ---
-    if (newState.channel?.name === "Join a Random VC") {
+    if (channelName && channelName.toLowerCase().includes("join a random vc")) {
         if (!publicCat) return;
         const publicVCs = publicCat.children.cache.filter(c => c.type === 2 && c.members.size < (c.userLimit || Infinity));
         if (!publicVCs.size) return;
@@ -72,7 +75,7 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
     }
 
     // --- Unmute Yourself ---
-    if (newState.channel?.name === "Unmute Yourself") {
+    if (channelName && channelName.toLowerCase().includes("unmute yourself")) {
         await newState.member.voice.setMute(false);
         if (oldState.channel) await newState.setChannel(oldState.channel).catch(() => {});
     }
@@ -180,11 +183,11 @@ client.on("messageCreate", async message => {
     // -------------------- VM Setup Command --------------------
     if (cmd === "vmsetup") {
         if (!member.permissions.has("ManageChannels")) return await sendEmbed(message.channel, "fail", "You need Manage Channels permission.");
-        const categories = { master: "Voice Master", public: "Public VC", private: "Private VC" };
+        const categories = { master: "📱{MAKE YOUR VOICE}", public: "🔊 public vcs", private: "🔊 private vcs" };
         const createdCats = {};
 
         for (const [key, name] of Object.entries(categories)) {
-            let cat = message.guild.channels.cache.find(c => c.name.includes(name) && c.type === 4);
+            let cat = message.guild.channels.cache.find(c => c.name === name && c.type === 4);
             if (!cat) cat = await message.guild.channels.create({ name, type: 4 });
             createdCats[key] = cat;
         }
@@ -202,10 +205,10 @@ client.on("messageCreate", async message => {
     // -------------------- VM Reset Command --------------------
     if (cmd === "vmreset") {
         if (!member.permissions.has("ManageChannels")) return await sendEmbed(message.channel, "fail", "You need Manage Channels permission.");
-        const categoriesToDelete = ["Voice Master", "Public VC", "Private VC"];
+        const categoriesToDelete = ["📱{MAKE YOUR VOICE}", "🔊 public vcs", "🔊 private vcs"];
 
         for (const catName of categoriesToDelete) {
-            const cat = message.guild.channels.cache.find(c => c.name.includes(catName) && c.type === 4);
+            const cat = message.guild.channels.cache.find(c => c.name === catName && c.type === 4);
             if (cat) {
                 cat.children.cache.forEach(async ch => {
                     await ch.delete().catch(() => {});
