@@ -1,6 +1,6 @@
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 const { emojis, prefix } = require("./config");
-require("./keep_alive"); // optional keep-alive server
+require("./keep_alive"); // Keep-alive server
 
 const client = new Client({
     intents: [
@@ -21,6 +21,9 @@ async function sendEmbed(channel, type, description) {
     await channel.send({ embeds: [embed] });
 }
 
+// --- In-memory storage of master category IDs per guild ---
+const guildVMs = new Map();
+
 // --- On Ready ---
 client.once("ready", () => {
     console.log(`${client.user.tag} is online!`);
@@ -31,15 +34,21 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
     const guild = newState.guild;
     if (!guild) return;
 
-    const masterCat = guild.channels.cache.find(c => c.name === "Voice Master" && c.type === 4);
-    const publicCat = guild.channels.cache.find(c => c.name === "Public VC" && c.type === 4);
-    const privateCat = guild.channels.cache.find(c => c.name === "Private VC" && c.type === 4);
+    const vmData = guildVMs.get(guild.id);
+    if (!vmData) return;
+
+    const { masterCatId, publicCatId, privateCatId } = vmData;
+
+    const masterCat = guild.channels.cache.get(masterCatId);
+    const publicCat = guild.channels.cache.get(publicCatId);
+    const privateCat = guild.channels.cache.get(privateCatId);
 
     // --- Temp Public VC ---
-    if (newState.channel?.name === "Join to Make Public") {
+    const joinPublicVC = masterCat?.children.find(ch => ch.type === 2 && ch.name.toLowerCase().includes("join") && ch.name.toLowerCase().includes("public"));
+    if (newState.channel?.id === joinPublicVC?.id) {
         if (!publicCat) return;
         const tempVC = await guild.channels.create({
-            name: `@${newState.member.user.username}’s channel`,
+            name: `${newState.member.user.username}’s Public VC`,
             type: 2,
             parent: publicCat.id,
             permissionOverwrites: [{ id: guild.id, allow: ["Connect", "ViewChannel"] }]
@@ -48,10 +57,11 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
     }
 
     // --- Temp Private VC ---
-    if (newState.channel?.name === "Join to Make Private") {
+    const joinPrivateVC = masterCat?.children.find(ch => ch.type === 2 && ch.name.toLowerCase().includes("join") && ch.name.toLowerCase().includes("private"));
+    if (newState.channel?.id === joinPrivateVC?.id) {
         if (!privateCat) return;
         const tempVC = await guild.channels.create({
-            name: `@${newState.member.user.username}’s channel`,
+            name: `${newState.member.user.username}’s Private VC`,
             type: 2,
             parent: privateCat.id,
             permissionOverwrites: [
@@ -80,6 +90,8 @@ client.on("messageCreate", async message => {
     const cmd = args.shift().toLowerCase();
     const member = message.member;
     const vc = member.voice.channel;
+
+    const vmData = guildVMs.get(message.guild.id);
 
     // -------------------- VC Commands --------------------
     if (cmd === "vc") {
@@ -135,20 +147,7 @@ client.on("messageCreate", async message => {
             case "rename":
                 const newName = args.slice(1).join(" ");
                 if (!newName) return await sendEmbed(message.channel, "fail", "Provide a new name.");
-
-                // Preserve overwrites
-                const overwrites = vc.permissionOverwrites.cache.map(o => ({
-                    id: o.id,
-                    allow: o.allow,
-                    deny: o.deny
-                }));
-
                 await vc.setName(newName);
-
-                for (const ow of overwrites) {
-                    await vc.permissionOverwrites.edit(ow.id, { Allow: ow.allow, Deny: ow.deny }).catch(() => {});
-                }
-
                 await sendEmbed(message.channel, "success", `VC renamed to ${newName}.`);
                 break;
 
@@ -178,6 +177,7 @@ client.on("messageCreate", async message => {
     // -------------------- VM Setup Command --------------------
     if (cmd === "vmsetup") {
         if (!member.permissions.has("ManageChannels")) return await sendEmbed(message.channel, "fail", "You need Manage Channels permission.");
+
         const categories = { master: "Voice Master", public: "Public VC", private: "Private VC" };
         const createdCats = {};
 
@@ -187,12 +187,18 @@ client.on("messageCreate", async message => {
             createdCats[key] = cat;
         }
 
-        const masterVCs = ["Join to Make Public", "Join to Make Private", "Join random Vc", "unmute urself"];
+        const masterVCs = ["Join to Make Public", "Join to Make Private", "Join random VC", "unmute yourself"];
         for (const vcName of masterVCs) {
-            if (!message.guild.channels.cache.find(c => c.name === vcName && c.parentId === createdCats.master.id)) {
+            if (!createdCats.master.children.cache.find(c => c.name === vcName)) {
                 await message.guild.channels.create({ name: vcName, type: 2, parent: createdCats.master.id });
             }
         }
+
+        guildVMs.set(message.guild.id, {
+            masterCatId: createdCats.master.id,
+            publicCatId: createdCats.public.id,
+            privateCatId: createdCats.private.id
+        });
 
         await sendEmbed(message.channel, "success", "Voice Master setup complete!");
     }
@@ -200,11 +206,16 @@ client.on("messageCreate", async message => {
     // -------------------- VM Reset Command --------------------
     if (cmd === "vmreset") {
         if (!member.permissions.has("ManageChannels")) return await sendEmbed(message.channel, "fail", "You need Manage Channels permission.");
-        const categoriesToDelete = ["Voice Master", "Public VC", "Private VC"];
 
-        for (const catName of categoriesToDelete) {
-            const cat = message.guild.channels.cache.find(c => c.name === catName && c.type === 4);
-            if (cat && cat.children?.cache) {
+        const vmData = guildVMs.get(message.guild.id);
+        if (!vmData) return await sendEmbed(message.channel, "fail", "Voice Master is not set up.");
+
+        const { masterCatId, publicCatId, privateCatId } = vmData;
+        const categoriesToDelete = [masterCatId, publicCatId, privateCatId];
+
+        for (const catId of categoriesToDelete) {
+            const cat = message.guild.channels.cache.get(catId);
+            if (cat) {
                 cat.children.cache.forEach(async ch => {
                     await ch.delete().catch(() => {});
                 });
@@ -212,6 +223,7 @@ client.on("messageCreate", async message => {
             }
         }
 
+        guildVMs.delete(message.guild.id);
         await sendEmbed(message.channel, "success", "Voice Master has been reset!");
     }
 });
