@@ -31,9 +31,9 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
     const guild = newState.guild;
     if (!guild) return;
 
-    const masterCat = guild.channels.cache.find(c => c.name === "Voice Master" && c.type === 4);
-    const publicCat = guild.channels.cache.find(c => c.name === "Public VC" && c.type === 4);
-    const privateCat = guild.channels.cache.find(c => c.name === "Private VC" && c.type === 4);
+    const masterCat = guild.channels.cache.find(c => c.name.includes("Voice Master") && c.type === 4);
+    const publicCat = guild.channels.cache.find(c => c.name.includes("Public VC") && c.type === 4);
+    const privateCat = guild.channels.cache.find(c => c.name.includes("Private VC") && c.type === 4);
 
     // --- Temp Public VC ---
     if (newState.channel?.name === "Make a Public VC") {
@@ -184,7 +184,7 @@ client.on("messageCreate", async message => {
         const createdCats = {};
 
         for (const [key, name] of Object.entries(categories)) {
-            let cat = message.guild.channels.cache.find(c => c.name === name && c.type === 4);
+            let cat = message.guild.channels.cache.find(c => c.name.includes(name) && c.type === 4);
             if (!cat) cat = await message.guild.channels.create({ name, type: 4 });
             createdCats[key] = cat;
         }
@@ -205,7 +205,7 @@ client.on("messageCreate", async message => {
         const categoriesToDelete = ["Voice Master", "Public VC", "Private VC"];
 
         for (const catName of categoriesToDelete) {
-            const cat = message.guild.channels.cache.find(c => c.name === catName && c.type === 4);
+            const cat = message.guild.channels.cache.find(c => c.name.includes(catName) && c.type === 4);
             if (cat) {
                 cat.children.cache.forEach(async ch => {
                     await ch.delete().catch(() => {});
