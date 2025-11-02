@@ -1,159 +1,167 @@
-const { Client, GatewayIntentBits, MessageEmbed } = require("discord.js");
-const { emojis, prefix } = require("./config");
-const keepAlive = require("./keep_alive"); // optional Express server to keep alive
+const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
+const { prefix, emojis } = require("./config");
+require("dotenv").config();
+require("./keep_alive"); // optional keep-alive for Render/BetterStack
 
 const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.GuildVoiceStates,
-        GatewayIntentBits.MessageContent
-    ]
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildVoiceStates,
+    GatewayIntentBits.MessageContent
+  ]
 });
 
 // --- Embed Helper ---
 function sendEmbed(channel, type, description) {
-    const embed = new MessageEmbed()
-        .setTitle(type === "success" ? `${emojis.success} Success!` : `${emojis.fail} Error!`)
-        .setDescription(description)
-        .setColor(type === "success" ? "GREEN" : "RED")
-        .setTimestamp();
-    channel.send({ embeds: [embed] });
+  const embed = new EmbedBuilder()
+    .setTitle(type === "success" ? `${emojis.success} Success!` : `${emojis.fail} Error!`)
+    .setDescription(description)
+    .setColor(type === "success" ? "Green" : "Red")
+    .setTimestamp();
+  channel.send({ embeds: [embed] });
 }
 
-// --- On Ready ---
-client.once("ready", async () => {
-    console.log(`${client.user.tag} is online!`);
+// --- Bot Ready ---
+client.once("ready", () => {
+  console.log(`${client.user.tag} is online!`);
 });
 
-// --- Voice State Handling ---
+// --- Voice State Handling (temporary VCs) ---
 client.on("voiceStateUpdate", async (oldState, newState) => {
-    const guild = newState.guild;
-    if (!guild) return;
+  const guild = newState.guild;
+  if (!guild) return;
 
-    const masterCat = guild.channels.cache.find(c => c.name === "Voice Master" && c.type === 4);
-    const publicCat = guild.channels.cache.find(c => c.name === "Public VC" && c.type === 4);
-    const privateCat = guild.channels.cache.find(c => c.name === "Private VC" && c.type === 4);
+  const masterCat = guild.channels.cache.find(c => c.name === "Voice Master" && c.type === 4);
+  const publicCat = guild.channels.cache.find(c => c.name === "Public VC" && c.type === 4);
+  const privateCat = guild.channels.cache.find(c => c.name === "Private VC" && c.type === 4);
 
-    // Create temp Public VC
-    if (newState.channel?.name === "Join to Make Public") {
-        if (!publicCat) return;
-        const tempVC = await guild.channels.create({
-            name: `@${newState.member.user.username}’s Public VC`,
-            type: 2,
-            parent: publicCat.id,
-            permissionOverwrites: [{ id: guild.id, allow: ["Connect", "ViewChannel"] }]
-        });
-        newState.setChannel(tempVC);
-    }
+  // Public temporary VC
+  if (newState.channel?.name === "Join to Make Public") {
+    if (!publicCat) return;
+    const tempVC = await guild.channels.create({
+      name: `@${newState.member.user.username}’s Public VC`,
+      type: 2,
+      parent: publicCat.id,
+      permissionOverwrites: [{ id: guild.id, allow: ["Connect", "ViewChannel"] }]
+    });
+    newState.setChannel(tempVC);
+  }
 
-    // Create temp Private VC
-    if (newState.channel?.name === "Join to Make Private") {
-        if (!privateCat) return;
-        const tempVC = await guild.channels.create({
-            name: `@${newState.member.user.username}’s Private VC`,
-            type: 2,
-            parent: privateCat.id,
-            permissionOverwrites: [
-                { id: guild.id, deny: ["Connect"] },
-                { id: newState.member.id, allow: ["Connect", "ViewChannel", "ManageChannels", "MuteMembers"] }
-            ]
-        });
-        newState.setChannel(tempVC);
-    }
+  // Private temporary VC
+  if (newState.channel?.name === "Join to Make Private") {
+    if (!privateCat) return;
+    const tempVC = await guild.channels.create({
+      name: `@${newState.member.user.username}’s Private VC`,
+      type: 2,
+      parent: privateCat.id,
+      permissionOverwrites: [
+        { id: guild.id, deny: ["Connect"] },
+        { id: newState.member.id, allow: ["Connect", "ViewChannel", "ManageChannels", "MuteMembers"] }
+      ]
+    });
+    newState.setChannel(tempVC);
+  }
 
-    // Delete empty temp VCs
-    if (oldState.channel?.parentId && (oldState.channel.parentId === publicCat?.id || oldState.channel.parentId === privateCat?.id) && oldState.channel.members.size === 0) {
-        oldState.channel.delete().catch(() => {});
-    }
+  // Delete empty temporary VCs
+  [publicCat, privateCat].forEach(cat => {
+    if (!cat) return;
+    cat.children.forEach(ch => {
+      if (ch.members.size === 0) ch.delete().catch(() => {});
+    });
+  });
 });
 
 // --- Command Handling ---
 client.on("messageCreate", async message => {
-    if (!message.guild || message.author.bot) return;
-    if (!message.content.startsWith(prefix)) return;
+  if (!message.guild || message.author.bot) return;
+  if (!message.content.startsWith(prefix)) return;
 
-    const args = message.content.slice(prefix.length).trim().split(/ +/);
-    const cmd = args.shift().toLowerCase();
-    const member = message.member;
-    const vc = member.voice.channel;
+  const args = message.content.slice(prefix.length).trim().split(/ +/);
+  const cmd = args.shift().toLowerCase();
+  const member = message.member;
+  const vc = member.voice.channel;
 
-    // -------------------- VC Commands --------------------
-    if (cmd === "vc") {
-        const sub = args[0]?.toLowerCase();
-        if (!sub) return sendEmbed(message.channel, "fail", "Specify a subcommand.");
-        if (!vc && sub !== "unmute") return sendEmbed(message.channel, "fail", "You must be in a VC.");
+  // -------------------- .vc Commands --------------------
+  if (cmd === "vc") {
+    const sub = args[0]?.toLowerCase();
+    if (!sub) return sendEmbed(message.channel, "fail", "Specify a subcommand.");
 
-        const ownerId = vc?.members.firstKey();
+    const ownerId = vc?.members.firstKey();
 
-        switch (sub) {
-            case "lock":
-                if (member.id !== ownerId) return sendEmbed(message.channel, "fail", "Only VC owner can lock.");
-                await vc.permissionOverwrites.edit(message.guild.id, { Connect: false });
-                sendEmbed(message.channel, "success", "VC has been locked!");
-                break;
+    switch (sub) {
+      case "lock":
+        if (!vc) return sendEmbed(message.channel, "fail", "You are not in a VC.");
+        if (member.id !== ownerId) return sendEmbed(message.channel, "fail", "Only VC owner can lock.");
+        await vc.permissionOverwrites.edit(message.guild.id, { Connect: false });
+        sendEmbed(message.channel, "success", "VC has been locked!");
+        break;
 
-            case "unlock":
-                if (member.id !== ownerId) return sendEmbed(message.channel, "fail", "Only VC owner can unlock.");
-                await vc.permissionOverwrites.edit(message.guild.id, { Connect: true });
-                sendEmbed(message.channel, "success", "VC has been unlocked!");
-                break;
+      case "unlock":
+        if (!vc) return sendEmbed(message.channel, "fail", "You are not in a VC.");
+        if (member.id !== ownerId) return sendEmbed(message.channel, "fail", "Only VC owner can unlock.");
+        await vc.permissionOverwrites.edit(message.guild.id, { Connect: true });
+        sendEmbed(message.channel, "success", "VC has been unlocked!");
+        break;
 
-            case "kick":
-                if (member.id !== ownerId) return sendEmbed(message.channel, "fail", "Only VC owner can kick users.");
-                const target = message.mentions.members.first();
-                if (!target) return sendEmbed(message.channel, "fail", "Mention a user to kick.");
-                if (!vc.members.has(target.id)) return sendEmbed(message.channel, "fail", "User is not in your VC.");
-                await target.voice.disconnect();
-                sendEmbed(message.channel, "success", `${target.user.tag} has been kicked from your VC.`);
-                break;
+      case "kick":
+        if (!vc) return sendEmbed(message.channel, "fail", "You are not in a VC.");
+        if (member.id !== ownerId) return sendEmbed(message.channel, "fail", "Only VC owner can kick.");
+        const target = message.mentions.members.first();
+        if (!target) return sendEmbed(message.channel, "fail", "Mention a user to kick.");
+        if (!vc.members.has(target.id)) return sendEmbed(message.channel, "fail", "User is not in your VC.");
+        await target.voice.disconnect();
+        sendEmbed(message.channel, "success", `${target.user.tag} has been kicked from your VC.`);
+        break;
 
-            case "unmute":
-                await member.voice.setMute(false);
-                sendEmbed(message.channel, "success", "You are now unmuted!");
-                break;
+      case "unmute":
+        if (!vc) return sendEmbed(message.channel, "fail", "You are not in a VC.");
+        await member.voice.setMute(false);
+        sendEmbed(message.channel, "success", "You are now unmuted!");
+        break;
 
-            // Additional commands like ban, permit, limit, info, rename, transfer can be added similarly
-        }
+      // TODO: Add ban, permit, limit, info, rename, transfer following same embed pattern
+    }
+  }
+
+  // -------------------- .vmsetup --------------------
+  if (cmd === "vmsetup") {
+    if (!member.permissions.has("ManageChannels")) return sendEmbed(message.channel, "fail", "You need Manage Channels permission.");
+
+    const categories = { master: "Voice Master", public: "Public VC", private: "Private VC" };
+    const createdCats = {};
+
+    for (const [key, name] of Object.entries(categories)) {
+      let cat = message.guild.channels.cache.find(c => c.name === name && c.type === 4);
+      if (!cat) cat = await message.guild.channels.create({ name, type: 4 });
+      createdCats[key] = cat;
     }
 
-    // -------------------- VM Setup Command --------------------
-    if (cmd === "vmsetup") {
-        if (!member.permissions.has("ManageChannels")) return sendEmbed(message.channel, "fail", "You need Manage Channels permission.");
-        const categories = { master: "Voice Master", public: "Public VC", private: "Private VC" };
-        const createdCats = {};
-
-        for (const [key, name] of Object.entries(categories)) {
-            let cat = message.guild.channels.cache.find(c => c.name === name && c.type === 4);
-            if (!cat) cat = await message.guild.channels.create({ name, type: 4 });
-            createdCats[key] = cat;
-        }
-
-        const masterVCs = ["Join to Make Public", "Join to Make Private", "Join random Vc", "unmute urself"];
-        for (const vcName of masterVCs) {
-            if (!message.guild.channels.cache.find(c => c.name === vcName && c.parentId === createdCats.master.id)) {
-                await message.guild.channels.create({ name: vcName, type: 2, parent: createdCats.master.id });
-            }
-        }
-
-        sendEmbed(message.channel, "success", "Voice Master setup complete!");
+    const masterVCs = ["Join to Make Public", "Join to Make Private", "Join random Vc", "unmute urself"];
+    for (const vcName of masterVCs) {
+      if (!message.guild.channels.cache.find(c => c.name === vcName && c.parentId === createdCats.master.id)) {
+        await message.guild.channels.create({ name: vcName, type: 2, parent: createdCats.master.id });
+      }
     }
 
-    // -------------------- VM Reset Command --------------------
-    if (cmd === "vmreset") {
-        if (!member.permissions.has("ManageChannels")) return sendEmbed(message.channel, "fail", "You need Manage Channels permission.");
-        const categoriesToDelete = ["Voice Master", "Public VC", "Private VC"];
+    sendEmbed(message.channel, "success", "Voice Master setup complete!");
+  }
 
-        for (const catName of categoriesToDelete) {
-            const cat = message.guild.channels.cache.find(c => c.name === catName && c.type === 4);
-            if (cat) {
-                cat.children.forEach(ch => ch.delete().catch(() => {}));
-                cat.delete().catch(() => {});
-            }
-        }
+  // -------------------- .vmreset --------------------
+  if (cmd === "vmreset") {
+    if (!member.permissions.has("ManageChannels")) return sendEmbed(message.channel, "fail", "You need Manage Channels permission.");
 
-        sendEmbed(message.channel, "success", "Voice Master has been reset!");
+    const categoriesToDelete = ["Voice Master", "Public VC", "Private VC"];
+    for (const catName of categoriesToDelete) {
+      const cat = message.guild.channels.cache.find(c => c.name === catName && c.type === 4);
+      if (cat) {
+        cat.children.forEach(ch => ch.delete().catch(() => {}));
+        cat.delete().catch(() => {});
+      }
     }
+
+    sendEmbed(message.channel, "success", "Voice Master has been reset!");
+  }
 });
 
 // --- Error Handling ---
