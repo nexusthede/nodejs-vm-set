@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, MessageEmbed } = require("discord.js");
+const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 const { emojis, prefix } = require("./config");
 
 const client = new Client({
@@ -11,13 +11,13 @@ const client = new Client({
 });
 
 // --- Embed Helper ---
-function sendEmbed(channel, type, description) {
-    const embed = new MessageEmbed()
+async function sendEmbed(channel, type, description) {
+    const embed = new EmbedBuilder()
         .setTitle(type === "success" ? `${emojis.success} Success!` : `${emojis.fail} Error!`)
         .setDescription(description)
-        .setColor(type === "success" ? "GREEN" : "RED")
+        .setColor(type === "success" ? "Green" : "Red")
         .setTimestamp();
-    channel.send({ embeds: [embed] });
+    await channel.send({ embeds: [embed] });
 }
 
 // --- On Ready ---
@@ -34,11 +34,11 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
     const publicCat = guild.channels.cache.find(c => c.name === "Public VC" && c.type === 4);
     const privateCat = guild.channels.cache.find(c => c.name === "Private VC" && c.type === 4);
 
-    // Create temp Public VC
+    // --- Temp Public VC ---
     if (newState.channel?.name === "Join to Make Public") {
         if (!publicCat) return;
         const tempVC = await guild.channels.create({
-            name: `@${newState.member.user.username}’s Public VC`,
+            name: `${newState.member.user.username}’s Public VC`,
             type: 2,
             parent: publicCat.id,
             permissionOverwrites: [{ id: guild.id, allow: ["Connect", "ViewChannel"] }]
@@ -46,11 +46,11 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
         newState.setChannel(tempVC);
     }
 
-    // Create temp Private VC
+    // --- Temp Private VC ---
     if (newState.channel?.name === "Join to Make Private") {
         if (!privateCat) return;
         const tempVC = await guild.channels.create({
-            name: `@${newState.member.user.username}’s Private VC`,
+            name: `${newState.member.user.username}’s Private VC`,
             type: 2,
             parent: privateCat.id,
             permissionOverwrites: [
@@ -61,7 +61,7 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
         newState.setChannel(tempVC);
     }
 
-    // Delete empty temp VCs
+    // --- Delete empty temp VCs ---
     [publicCat, privateCat].forEach(cat => {
         if (!cat) return;
         cat.children.forEach(ch => {
@@ -83,87 +83,87 @@ client.on("messageCreate", async message => {
     // -------------------- VC Commands --------------------
     if (cmd === "vc") {
         const sub = args[0]?.toLowerCase();
-        if (!sub) return sendEmbed(message.channel, "fail", "Specify a subcommand.");
-        if (!vc && sub !== "unmute") return sendEmbed(message.channel, "fail", "You must be in a VC.");
+        if (!sub) return await sendEmbed(message.channel, "fail", "Specify a subcommand.");
+        if (!vc && sub !== "unmute") return await sendEmbed(message.channel, "fail", "You must be in a VC.");
 
         const ownerId = vc?.members.firstKey();
         const target = message.mentions.members.first();
 
         switch (sub) {
             case "lock":
-                if (member.id !== ownerId) return sendEmbed(message.channel, "fail", "Only VC owner can lock.");
+                if (member.id !== ownerId) return await sendEmbed(message.channel, "fail", "Only VC owner can lock.");
                 await vc.permissionOverwrites.edit(message.guild.id, { Connect: false });
-                sendEmbed(message.channel, "success", "VC has been locked!");
+                await sendEmbed(message.channel, "success", "VC has been locked!");
                 break;
 
             case "unlock":
-                if (member.id !== ownerId) return sendEmbed(message.channel, "fail", "Only VC owner can unlock.");
+                if (member.id !== ownerId) return await sendEmbed(message.channel, "fail", "Only VC owner can unlock.");
                 await vc.permissionOverwrites.edit(message.guild.id, { Connect: true });
-                sendEmbed(message.channel, "success", "VC has been unlocked!");
+                await sendEmbed(message.channel, "success", "VC has been unlocked!");
                 break;
 
             case "kick":
-                if (member.id !== ownerId) return sendEmbed(message.channel, "fail", "Only VC owner can kick users.");
-                if (!target) return sendEmbed(message.channel, "fail", "Mention a user to kick.");
-                if (!vc.members.has(target.id)) return sendEmbed(message.channel, "fail", "User is not in your VC.");
+                if (member.id !== ownerId) return await sendEmbed(message.channel, "fail", "Only VC owner can kick users.");
+                if (!target) return await sendEmbed(message.channel, "fail", "Mention a user to kick.");
+                if (!vc.members.has(target.id)) return await sendEmbed(message.channel, "fail", "User is not in your VC.");
                 await target.voice.disconnect();
-                sendEmbed(message.channel, "success", `${target.user.tag} has been kicked from your VC.`);
+                await sendEmbed(message.channel, "success", `${target.user.tag} has been kicked from your VC.`);
                 break;
 
             case "ban":
-                if (member.id !== ownerId) return sendEmbed(message.channel, "fail", "Only VC owner can ban users.");
-                if (!target) return sendEmbed(message.channel, "fail", "Mention a user to ban.");
+                if (member.id !== ownerId) return await sendEmbed(message.channel, "fail", "Only VC owner can ban users.");
+                if (!target) return await sendEmbed(message.channel, "fail", "Mention a user to ban.");
                 await vc.permissionOverwrites.edit(target.id, { Connect: false });
-                sendEmbed(message.channel, "success", `${target.user.tag} has been banned from your VC.`);
+                await sendEmbed(message.channel, "success", `${target.user.tag} has been banned from your VC.`);
                 break;
 
             case "permit":
-                if (member.id !== ownerId) return sendEmbed(message.channel, "fail", "Only VC owner can permit users.");
-                if (!target) return sendEmbed(message.channel, "fail", "Mention a user to permit.");
+                if (member.id !== ownerId) return await sendEmbed(message.channel, "fail", "Only VC owner can permit users.");
+                if (!target) return await sendEmbed(message.channel, "fail", "Mention a user to permit.");
                 await vc.permissionOverwrites.edit(target.id, { Connect: true });
-                sendEmbed(message.channel, "success", `${target.user.tag} is now allowed in your VC.`);
+                await sendEmbed(message.channel, "success", `${target.user.tag} is now allowed in your VC.`);
                 break;
 
             case "limit":
                 const limit = parseInt(args[1]);
-                if (isNaN(limit)) return sendEmbed(message.channel, "fail", "Provide a number as limit.");
+                if (isNaN(limit)) return await sendEmbed(message.channel, "fail", "Provide a number as limit.");
                 await vc.setUserLimit(limit);
-                sendEmbed(message.channel, "success", `VC user limit set to ${limit}.`);
+                await sendEmbed(message.channel, "success", `VC user limit set to ${limit}.`);
                 break;
 
             case "rename":
                 const newName = args.slice(1).join(" ");
-                if (!newName) return sendEmbed(message.channel, "fail", "Provide a new name.");
+                if (!newName) return await sendEmbed(message.channel, "fail", "Provide a new name.");
                 await vc.setName(newName);
-                sendEmbed(message.channel, "success", `VC renamed to ${newName}.`);
+                await sendEmbed(message.channel, "success", `VC renamed to ${newName}.`);
                 break;
 
             case "transfer":
-                if (!target) return sendEmbed(message.channel, "fail", "Mention a user to transfer VC ownership.");
+                if (!target) return await sendEmbed(message.channel, "fail", "Mention a user to transfer VC ownership.");
                 await vc.permissionOverwrites.edit(ownerId, { Connect: false, ManageChannels: false });
                 await vc.permissionOverwrites.edit(target.id, { Connect: true, ManageChannels: true });
-                sendEmbed(message.channel, "success", `VC ownership transferred to ${target.user.tag}.`);
+                await sendEmbed(message.channel, "success", `VC ownership transferred to ${target.user.tag}.`);
                 break;
 
             case "info":
-                const infoEmbed = new MessageEmbed()
+                const infoEmbed = new EmbedBuilder()
                     .setTitle(`${emojis.success} VC Info`)
                     .setDescription(`Name: ${vc.name}\nOwner: <@${ownerId}>\nMembers: ${vc.members.size}\nUser Limit: ${vc.userLimit || "None"}`)
-                    .setColor("BLUE")
+                    .setColor("Blue")
                     .setTimestamp();
-                message.channel.send({ embeds: [infoEmbed] });
+                await message.channel.send({ embeds: [infoEmbed] });
                 break;
 
             case "unmute":
                 await member.voice.setMute(false);
-                sendEmbed(message.channel, "success", "You are now unmuted!");
+                await sendEmbed(message.channel, "success", "You are now unmuted!");
                 break;
         }
     }
 
     // -------------------- VM Setup Command --------------------
     if (cmd === "vmsetup") {
-        if (!member.permissions.has("ManageChannels")) return sendEmbed(message.channel, "fail", "You need Manage Channels permission.");
+        if (!member.permissions.has("ManageChannels")) return await sendEmbed(message.channel, "fail", "You need Manage Channels permission.");
         const categories = { master: "Voice Master", public: "Public VC", private: "Private VC" };
         const createdCats = {};
 
@@ -180,23 +180,28 @@ client.on("messageCreate", async message => {
             }
         }
 
-        sendEmbed(message.channel, "success", "Voice Master setup complete!");
+        await sendEmbed(message.channel, "success", "Voice Master setup complete!");
     }
 
     // -------------------- VM Reset Command --------------------
     if (cmd === "vmreset") {
-        if (!member.permissions.has("ManageChannels")) return sendEmbed(message.channel, "fail", "You need Manage Channels permission.");
+        if (!member.permissions.has("ManageChannels")) return await sendEmbed(message.channel, "fail", "You need Manage Channels permission.");
+
         const categoriesToDelete = ["Voice Master", "Public VC", "Private VC"];
 
         for (const catName of categoriesToDelete) {
             const cat = message.guild.channels.cache.find(c => c.name === catName && c.type === 4);
             if (cat) {
-                cat.children.forEach(ch => ch.delete().catch(() => {}));
-                cat.delete().catch(() => {});
+                // Delete all child channels first
+                for (const ch of cat.children.values()) {
+                    await ch.delete().catch(() => {});
+                }
+                // Delete the category
+                await cat.delete().catch(() => {});
             }
         }
 
-        sendEmbed(message.channel, "success", "Voice Master has been reset!");
+        await sendEmbed(message.channel, "success", "Voice Master has been reset!");
     }
 });
 
