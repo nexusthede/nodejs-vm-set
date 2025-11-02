@@ -1,6 +1,6 @@
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 const { emojis, prefix } = require("./config");
-require("./keep_alive"); // Keep-alive server
+require("./keep_alive"); // optional keep-alive server
 
 const client = new Client({
     intents: [
@@ -39,7 +39,7 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
     if (newState.channel?.name === "Join to Make Public") {
         if (!publicCat) return;
         const tempVC = await guild.channels.create({
-            name: `${newState.member.user.username}’s Public VC`,
+            name: `@${newState.member.user.username}’s channel`,
             type: 2,
             parent: publicCat.id,
             permissionOverwrites: [{ id: guild.id, allow: ["Connect", "ViewChannel"] }]
@@ -51,7 +51,7 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
     if (newState.channel?.name === "Join to Make Private") {
         if (!privateCat) return;
         const tempVC = await guild.channels.create({
-            name: `${newState.member.user.username}’s Private VC`,
+            name: `@${newState.member.user.username}’s channel`,
             type: 2,
             parent: privateCat.id,
             permissionOverwrites: [
@@ -135,7 +135,20 @@ client.on("messageCreate", async message => {
             case "rename":
                 const newName = args.slice(1).join(" ");
                 if (!newName) return await sendEmbed(message.channel, "fail", "Provide a new name.");
+
+                // Preserve overwrites
+                const overwrites = vc.permissionOverwrites.cache.map(o => ({
+                    id: o.id,
+                    allow: o.allow,
+                    deny: o.deny
+                }));
+
                 await vc.setName(newName);
+
+                for (const ow of overwrites) {
+                    await vc.permissionOverwrites.edit(ow.id, { Allow: ow.allow, Deny: ow.deny }).catch(() => {});
+                }
+
                 await sendEmbed(message.channel, "success", `VC renamed to ${newName}.`);
                 break;
 
@@ -191,7 +204,7 @@ client.on("messageCreate", async message => {
 
         for (const catName of categoriesToDelete) {
             const cat = message.guild.channels.cache.find(c => c.name === catName && c.type === 4);
-            if (cat) {
+            if (cat && cat.children?.cache) {
                 cat.children.cache.forEach(async ch => {
                     await ch.delete().catch(() => {});
                 });
