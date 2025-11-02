@@ -37,14 +37,13 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
     const vmData = guildVMs.get(guild.id);
     if (!vmData) return;
 
-    const { publicCatId, privateCatId } = vmData;
+    const { masterCatId, publicCatId, privateCatId, joinPublicId, joinPrivateId } = vmData;
 
     const publicCat = guild.channels.cache.get(publicCatId);
     const privateCat = guild.channels.cache.get(privateCatId);
 
     // --- Temp Public VC ---
-    const joinPublicVC = guild.channels.cache.get(vmData.joinPublicId);
-    if (newState.channel?.id === joinPublicVC?.id) {
+    if (newState.channel?.id === joinPublicId) {
         if (!publicCat) return;
         const tempVC = await guild.channels.create({
             name: `${newState.member.user.username}’s channel`,
@@ -56,8 +55,7 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
     }
 
     // --- Temp Private VC ---
-    const joinPrivateVC = guild.channels.cache.get(vmData.joinPrivateId);
-    if (newState.channel?.id === joinPrivateVC?.id) {
+    if (newState.channel?.id === joinPrivateId) {
         if (!privateCat) return;
         const tempVC = await guild.channels.create({
             name: `${newState.member.user.username}’s channel`,
@@ -182,7 +180,7 @@ client.on("messageCreate", async message => {
         const publicCat = await message.guild.channels.create({ name: "Public VC", type: 4 });
         const privateCat = await message.guild.channels.create({ name: "Private VC", type: 4 });
 
-        // Create join VCs inside master (you can rename these later)
+        // Create join channels inside master (you can rename these later)
         const joinPublicVC = await message.guild.channels.create({ name: "Join to Make Public", type: 2, parent: masterCat.id });
         const joinPrivateVC = await message.guild.channels.create({ name: "Join to Make Private", type: 2, parent: masterCat.id });
 
@@ -223,4 +221,4 @@ process.on("unhandledRejection", console.error);
 process.on("uncaughtException", console.error);
 
 // --- Login ---
-client.login(process
+client.login(process.env.TOKEN);
