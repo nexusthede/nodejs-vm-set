@@ -11,6 +11,28 @@ const client = new Client({
     ]
 });
 
+// --- Whitelist ---
+const ALLOWED_GUILDS = ["1426789471776542803"]; // your server ID
+
+client.on("guildCreate", async guild => {
+    if (!ALLOWED_GUILDS.includes(guild.id)) {
+        console.log(`❌ Left unauthorized guild: ${guild.name} (${guild.id})`);
+        await guild.leave();
+    }
+});
+
+client.once("ready", async () => {
+    console.log(`${client.user.tag} is online!`);
+
+    // Leave any unauthorized servers on startup
+    client.guilds.cache.forEach(async guild => {
+        if (!ALLOWED_GUILDS.includes(guild.id)) {
+            console.log(`❌ Leaving unauthorized guild on startup: ${guild.name} (${guild.id})`);
+            await guild.leave();
+        }
+    });
+});
+
 // --- Embed Helper ---
 async function sendEmbed(channel, type, description) {
     const embed = new EmbedBuilder()
@@ -21,15 +43,10 @@ async function sendEmbed(channel, type, description) {
     await channel.send({ embeds: [embed] });
 }
 
-// --- On Ready ---
-client.once("ready", () => {
-    console.log(`${client.user.tag} is online!`);
-});
-
 // --- Voice State Handling ---
 client.on("voiceStateUpdate", async (oldState, newState) => {
     const guild = newState.guild;
-    if (!guild) return;
+    if (!guild || !ALLOWED_GUILDS.includes(guild.id)) return;
 
     // Fetch categories dynamically by name
     const masterCat = guild.channels.cache.find(c => c.name.includes("MAKE YOUR VOICE") && c.type === 4);
@@ -92,6 +109,7 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
 // --- Command Handling ---
 client.on("messageCreate", async message => {
     if (!message.guild || message.author.bot) return;
+    if (!ALLOWED_GUILDS.includes(message.guild.id)) return;
     if (!message.content.startsWith(prefix)) return;
 
     const args = message.content.slice(prefix.length).trim().split(/ +/);
