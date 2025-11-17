@@ -1,5 +1,5 @@
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
-const { emojis, prefix } = require("./config");
+const { prefix } = require("./config");
 require("./keep_alive"); // optional keep-alive server
 
 const client = new Client({
@@ -16,7 +16,7 @@ const ALLOWED_GUILDS = ["1426789471776542803"]; // your server ID
 
 client.on("guildCreate", async guild => {
     if (!ALLOWED_GUILDS.includes(guild.id)) {
-        console.log(`❌ Left unauthorized guild: ${guild.name} (${guild.id})`);
+        console.log(`Left unauthorized guild: ${guild.name} (${guild.id})`);
         await guild.leave();
     }
 });
@@ -24,10 +24,10 @@ client.on("guildCreate", async guild => {
 client.once("ready", async () => {
     console.log(`${client.user.tag} is online!`);
 
-    // Leave any unauthorized servers on startup
+    // Leave unauthorized servers on startup
     client.guilds.cache.forEach(async guild => {
         if (!ALLOWED_GUILDS.includes(guild.id)) {
-            console.log(`❌ Leaving unauthorized guild on startup: ${guild.name} (${guild.id})`);
+            console.log(`Leaving unauthorized guild on startup: ${guild.name} (${guild.id})`);
             await guild.leave();
         }
     });
@@ -36,9 +36,9 @@ client.once("ready", async () => {
 // --- Embed Helper ---
 async function sendEmbed(channel, type, description) {
     const embed = new EmbedBuilder()
-        .setTitle(type === "success" ? `${emojis.success} Success!` : `${emojis.fail} Error!`)
+        .setTitle(type === "success" ? "Success!" : "Error!")
         .setDescription(description)
-        .setColor(type === "success" ? "Green" : "Red")
+        .setColor("#ADD8E6") // light blue
         .setTimestamp();
     await channel.send({ embeds: [embed] });
 }
@@ -48,7 +48,6 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
     const guild = newState.guild;
     if (!guild || !ALLOWED_GUILDS.includes(guild.id)) return;
 
-    // Fetch categories dynamically by name
     const masterCat = guild.channels.cache.find(c => c.name.includes("MAKE YOUR VOICE") && c.type === 4);
     const publicCat = guild.channels.cache.find(c => c.name.includes("public vcs") && c.type === 4);
     const privateCat = guild.channels.cache.find(c => c.name.includes("private vcs") && c.type === 4);
@@ -121,7 +120,7 @@ client.on("messageCreate", async message => {
     if (cmd === "vc") {
         const sub = args[0]?.toLowerCase();
         if (!sub) return await sendEmbed(message.channel, "fail", "Specify a subcommand.");
-        if (!vc && sub !== "unmute") return await sendEmbed(message.channel, "fail", "You must be in a VC.");
+        if (!vc && !["unmute", "hide", "unhide"].includes(sub)) return await sendEmbed(message.channel, "fail", "You must be in a VC.");
 
         const ownerId = vc?.members.firstKey();
         const target = message.mentions.members.first();
@@ -184,9 +183,9 @@ client.on("messageCreate", async message => {
 
             case "info":
                 const infoEmbed = new EmbedBuilder()
-                    .setTitle(`${emojis.success} VC Info`)
+                    .setTitle("VC Info")
                     .setDescription(`Name: ${vc.name}\nOwner: <@${ownerId}>\nMembers: ${vc.members.size}\nUser Limit: ${vc.userLimit || "None"}`)
-                    .setColor("Blue")
+                    .setColor("#ADD8E6")
                     .setTimestamp();
                 await message.channel.send({ embeds: [infoEmbed] });
                 break;
@@ -195,13 +194,25 @@ client.on("messageCreate", async message => {
                 await member.voice.setMute(false);
                 await sendEmbed(message.channel, "success", "You are now unmuted!");
                 break;
+
+            case "hide":
+                if (member.id !== ownerId) return await sendEmbed(message.channel, "fail", "Only VC owner can hide the VC.");
+                await vc.permissionOverwrites.edit(message.guild.id, { ViewChannel: false });
+                await sendEmbed(message.channel, "success", "VC is now hidden from everyone!");
+                break;
+
+            case "unhide":
+                if (member.id !== ownerId) return await sendEmbed(message.channel, "fail", "Only VC owner can unhide the VC.");
+                await vc.permissionOverwrites.edit(message.guild.id, { ViewChannel: true });
+                await sendEmbed(message.channel, "success", "VC is now visible to everyone!");
+                break;
         }
     }
 
     // -------------------- VM Setup Command --------------------
     if (cmd === "vmsetup") {
         if (!member.permissions.has("ManageChannels")) return await sendEmbed(message.channel, "fail", "You need Manage Channels permission.");
-        const categories = { master: "📱{MAKE YOUR VOICE}", public: "🔊 public vcs", private: "🔊 private vcs" };
+        const categories = { master: "MAKE YOUR VOICE", public: "public vcs", private: "private vcs" };
         const createdCats = {};
 
         for (const [key, name] of Object.entries(categories)) {
@@ -223,7 +234,7 @@ client.on("messageCreate", async message => {
     // -------------------- VM Reset Command --------------------
     if (cmd === "vmreset") {
         if (!member.permissions.has("ManageChannels")) return await sendEmbed(message.channel, "fail", "You need Manage Channels permission.");
-        const categoriesToDelete = ["📱{MAKE YOUR VOICE}", "🔊 public vcs", "🔊 private vcs"];
+        const categoriesToDelete = ["MAKE YOUR VOICE", "public vcs", "private vcs"];
 
         for (const catName of categoriesToDelete) {
             const cat = message.guild.channels.cache.find(c => c.name === catName && c.type === 4);
